@@ -1,13 +1,13 @@
 package rvosimulator
 
 import (
-	//	"fmt"
 	"math"
 )
 
 func init() {
 }
 
+// Agent
 type Agent struct {
 	ID                int
 	Position          *Vector2
@@ -20,16 +20,19 @@ type Agent struct {
 	MaxNeighbors      int
 	NeighborDist      float64
 	MaxSpeed          float64
-	ObstacleNeighbors []*ObstacleNeighbor // pair ?
-	AgentNeighbors    []*AgentNeighbor    //pair?
+	ObstacleNeighbors []*ObstacleNeighbor
+	AgentNeighbors    []*AgentNeighbor
 	OrcaLines         []*Line
+	Goal              *Vector2
 }
 
+// ObstacleNeighbor :
 type ObstacleNeighbor struct {
 	DistSq   float64
 	Obstacle *Obstacle
 }
 
+// AgentNeighbor :
 type AgentNeighbor struct {
 	DistSq float64
 	Agent  *Agent
@@ -49,7 +52,8 @@ func init() {
 	RVO_EPSILON = 0.00001
 }
 
-func NewAgent() *Agent {
+// NewEmptyAgent :
+func NewEmptyAgent() *Agent {
 	a := &Agent{
 		ID:              0,
 		Radius:          float64(0),
@@ -62,7 +66,8 @@ func NewAgent() *Agent {
 	return a
 }
 
-func NewCustomAgent(id int, position *Vector2, radius float64, timeHorizon float64, timeHorizonObst float64, velocity *Vector2, newVelocity *Vector2, prefVelocity *Vector2, maxNeighbors int, neighborDist float64, maxSpeed float64, obstacleNeighbors []*ObstacleNeighbor) *Agent {
+// NewAgent :
+func NewAgent(id int, position *Vector2, radius float64, timeHorizon float64, timeHorizonObst float64, velocity *Vector2, newVelocity *Vector2, prefVelocity *Vector2, maxNeighbors int, neighborDist float64, maxSpeed float64, obstacleNeighbors []*ObstacleNeighbor) *Agent {
 	a := &Agent{
 		ID:                id,
 		Position:          position,
@@ -80,17 +85,10 @@ func NewCustomAgent(id int, position *Vector2, radius float64, timeHorizon float
 	return a
 }
 
-// CHECK OK
-// OK 1
+// ComputeNeighbors
 func (a *Agent) ComputeNeighbors() {
 	a.ObstacleNeighbors = make([]*ObstacleNeighbor, 0)
 	rangeSq := math.Pow(a.TimeHorizonObst*a.MaxSpeed+a.Radius, 2)
-
-	//	fmt.Printf("FN: ComputeNeighbors \n agent check \n ID %v\n Position: %v\n MaxNeighbors: %v\n MaxSpeed; %v\nNeighborDist: %v\n Radius: %v\n TimeHorizon: %v\n TimeHorizonObst: %v\n Velocity: %v\n\n",
-	//		a.ID, a.Position, a.MaxNeighbors, a.MaxSpeed, a.NeighborDist, a.Radius, a.TimeHorizon, a.TimeHorizonObst, a.Velocity)
-
-	//	fmt.Printf("FN: ComputeNeighbors \n Obstacle RangeSq %v\n\n",
-	//		rangeSq)
 
 	Sim.KdTree.ComputeObstacleNeighbors(a, rangeSq)
 
@@ -98,14 +96,11 @@ func (a *Agent) ComputeNeighbors() {
 
 	if a.MaxNeighbors > 0 {
 		rangeSq = math.Pow(a.NeighborDist, 2)
-		//		fmt.Printf("FN: ComputeNeighbors \n Agent RangeSq %v\n\n",
-		//			rangeSq)
 		Sim.KdTree.ComputeAgentNeighbors(a, rangeSq)
 	}
 }
 
-// CHECK OK
-//FINISH
+// ComputeNewVelocity
 func (a *Agent) ComputeNewVelocity() {
 	a.OrcaLines = make([]*Line, 0)
 
@@ -113,6 +108,7 @@ func (a *Agent) ComputeNewVelocity() {
 
 	/* Create obstacle ORCA lines. */
 	for i := 0; i < len(a.ObstacleNeighbors); i++ {
+
 
 		var obstacle1, obstacle2 *Obstacle
 		obstacle1 = a.ObstacleNeighbors[i].Obstacle
@@ -150,22 +146,17 @@ func (a *Agent) ComputeNewVelocity() {
 
 		var obstacleVector *Vector2
 		obstacleVector = Sub(obstacle2.Point, obstacle1.Point)
-		// (-relativePosition1 * obstacleVector) / absSq(obstacleVector)
 		var s, distSqLine float64
 		s = Mul(Flip(relativePosition1), obstacleVector) / Sqr(obstacleVector)
-		// bsSq(-relativePosition1 - s * obstacleVector)
 		distSqLine = Sqr(Sub(Flip(relativePosition1), MulOne(obstacleVector, s)))
 
 		var line Line
-
 		if s < 0 && distSq1 <= radiusSq {
 			/* Collision with left vertex. Ignore if non-convex. */
 			if obstacle1.IsConvex {
 				line.Point = NewVector2(0, 0)
 				line.Direction = Normalize(NewVector2(-relativePosition1.Y, relativePosition1.X))
 				a.OrcaLines = append(a.OrcaLines, &line)
-				//				fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(f): %v \n ORCALineDir(f): %v \n\n",
-				//					line.Point, line.Direction)
 			}
 
 			continue
@@ -176,18 +167,15 @@ func (a *Agent) ComputeNewVelocity() {
 				line.Point = NewVector2(0, 0)
 				line.Direction = Normalize(NewVector2(-relativePosition2.Y, relativePosition2.X))
 				a.OrcaLines = append(a.OrcaLines, &line)
-				//				fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(g): %v \n ORCALineDir(g): %v \n\n",
-				//					line.Point, line.Direction)
 			}
 
 			continue
 		} else if s >= 0 && s < 1 && distSqLine <= radiusSq {
 			/* Collision with obstacle segment. */
+
 			line.Point = NewVector2(0, 0)
 			line.Direction = Flip(obstacle1.UnitDir)
 			a.OrcaLines = append(a.OrcaLines, &line)
-			//			fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(h): %v \n ORCALineDir(h): %v \n\n",
-			//				line.Point, line.Direction)
 			continue
 		}
 
@@ -206,6 +194,7 @@ func (a *Agent) ComputeNewVelocity() {
 			 * defines velocity obstacle.
 			 */
 			if !obstacle1.IsConvex {
+
 				/* Ignore obstacle. */
 				continue
 			}
@@ -275,9 +264,7 @@ func (a *Agent) ComputeNewVelocity() {
 		}
 
 		/* Compute cut-off centers. */
-		//invTimeHorizonObst * (obstacle1.Point - a.Position)
 		leftCutoff := MulOne(Sub(obstacle1.Point, a.Position), invTimeHorizonObst)
-		//invTimeHorizonObst * (obstacle2.Point - a.Position)
 		rightCutoff := MulOne(Sub(obstacle2.Point, a.Position), invTimeHorizonObst)
 		cutoffVec := Sub(rightCutoff, leftCutoff)
 
@@ -285,7 +272,6 @@ func (a *Agent) ComputeNewVelocity() {
 
 		/* Check if current velocity is projected on cutoff circles. */
 		var t float64
-		//t := (obstacle1 == obstacle2 ? 0.5f : ((a.Velocity - leftCutoff) * cutoffVec) / Sqr(cutoffVec));
 		if obstacle1 == obstacle2 {
 			t = 0.5
 		} else {
@@ -303,8 +289,6 @@ func (a *Agent) ComputeNewVelocity() {
 			line.Direction = NewVector2(unitW.Y, -unitW.X)
 			line.Point = Add(leftCutoff, MulOne(unitW, a.Radius*invTimeHorizonObst))
 			a.OrcaLines = append(a.OrcaLines, &line)
-			//			fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(e): %v \n ORCALineDir(e): %v \n\n",
-			//				line.Point, line.Direction)
 			continue
 		} else if t > 1 && tRight < 0 {
 			/* Project on right cut-off circle. */
@@ -313,8 +297,6 @@ func (a *Agent) ComputeNewVelocity() {
 			line.Direction = NewVector2(unitW.Y, -unitW.X)
 			line.Point = Add(rightCutoff, MulOne(unitW, a.Radius*invTimeHorizonObst))
 			a.OrcaLines = append(a.OrcaLines, &line)
-			//			fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(d): %v \n ORCALineDir(d): %v \n\n",
-			//				line.Point, line.Direction)
 			continue
 		}
 
@@ -343,10 +325,8 @@ func (a *Agent) ComputeNewVelocity() {
 			/* Project on cut-off line. */
 			line.Direction = Flip(obstacle1.UnitDir)
 			line.Point = Add(leftCutoff, MulOne(NewVector2(-line.Direction.Y, line.Direction.X), a.Radius*invTimeHorizonObst))
-			//line.Point = leftCutoff + a.Radius * invTimeHorizonObst * NewVector2(-line.Direction.Y(), line.Direction.X());
 			a.OrcaLines = append(a.OrcaLines, &line)
-			//			fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(c): %v \n ORCALineDir(c): %v \n\n",
-			//				line.Point, line.Direction)
+			
 			continue
 		} else if distSqLeft <= distSqRight {
 			/* Project on left leg. */
@@ -356,10 +336,8 @@ func (a *Agent) ComputeNewVelocity() {
 
 			line.Direction = leftLegDirection
 			line.Point = Add(leftCutoff, MulOne(NewVector2(-line.Direction.Y, line.Direction.X), a.Radius*invTimeHorizonObst))
-			//line.Point = leftCutoff + a.Radius * invTimeHorizonObst * NewVector2(-line.Direction.Y(), line.Direction.X());
 			a.OrcaLines = append(a.OrcaLines, &line)
-			//			fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(b): %v \n ORCALineDir(b): %v \n\n",
-			//				line.Point, line.Direction)
+
 			continue
 		} else {
 			/* Project on right leg. */
@@ -369,10 +347,8 @@ func (a *Agent) ComputeNewVelocity() {
 
 			line.Direction = Flip(rightLegDirection)
 			line.Point = Add(rightCutoff, MulOne(NewVector2(-line.Direction.Y, line.Direction.X), a.Radius*invTimeHorizonObst))
-			//line.Point = rightCutoff + a.Radius * invTimeHorizonObst * NewVector2(-line.Direction.Y(), line.Direction.X());
 			a.OrcaLines = append(a.OrcaLines, &line)
-			//			fmt.Printf("FN: computeNewVelocity \n Obstacle ORCALines \n ORCALinePoint(a): %v \n ORCALineDir(a): %v \n\n",
-			//				line.Point, line.Direction)
+
 			continue
 		}
 	}
@@ -385,6 +361,7 @@ func (a *Agent) ComputeNewVelocity() {
 
 	/* Create agent ORCA lines. */
 	for i := 0; i < len(a.AgentNeighbors); i++ {
+		// otherが違う
 		var other *Agent
 		other = a.AgentNeighbors[i].Agent
 
@@ -449,26 +426,20 @@ func (a *Agent) ComputeNewVelocity() {
 
 		line.Point = Add(a.Velocity, MulOne(u, 0.5))
 		a.OrcaLines = append(a.OrcaLines, &line)
-		//		fmt.Printf("FN: computeNewVelocity \n Agent ORCALines \n ORCALinePoint(a): %v \n ORCALineDir(a): %v \n\n",
-		//			line.Point, line.Direction)
 	}
-	//fmt.Printf("orca %v", a.OrcaLines)
 
 	lineFail := a.LinearProgram2(a.OrcaLines, a.MaxSpeed, a.PrefVelocity, false)
-	//	fmt.Printf("FN: computeNewVelocity \n lineFail: %v \n len(ORCALines): %v \n newVelocity: %v \n\n",
-	//		lineFail, len(a.OrcaLines), a.NewVelocity)
 	if lineFail < len(a.OrcaLines) {
 		a.LinearProgram3(a.OrcaLines, numObstLines, lineFail, a.MaxSpeed)
 	}
 
 }
 
-// !
-// FINISH
+// InsertAgentNeighbor
 func (a *Agent) InsertAgentNeighbor(agent *Agent, rangeSq float64) {
-
-	if a != agent { // ?
+	if a != agent {
 		distSq := Sqr(Sub(a.Position, agent.Position))
+		//agent.Positionが違う
 
 		// 2Agent間の距離が半径よりも近かった場合
 		if distSq < rangeSq {
@@ -478,6 +449,8 @@ func (a *Agent) InsertAgentNeighbor(agent *Agent, rangeSq float64) {
 
 			i := len(a.AgentNeighbors) - 1
 
+			// 距離が短い順に並び替え
+			// うまく並び替えれていない
 			for {
 				if i != 0 && distSq < a.AgentNeighbors[i-1].DistSq {
 					a.AgentNeighbors[i] = a.AgentNeighbors[i-1]
@@ -499,8 +472,9 @@ func (a *Agent) InsertAgentNeighbor(agent *Agent, rangeSq float64) {
 	}
 }
 
-// FINISH
+// InsertObstacleNeighbor
 func (a *Agent) InsertObstacleNeighbor(obstacle *Obstacle, rangeSq float64) {
+	
 	nextObstacle := obstacle.NextObstacle
 
 	distSq := DistSqPointLineSegment(obstacle.Point, nextObstacle.Point, a.Position)
@@ -526,18 +500,21 @@ func (a *Agent) InsertObstacleNeighbor(obstacle *Obstacle, rangeSq float64) {
 	}
 }
 
-// FINISH
+// Update
 func (a *Agent) Update() {
-	//	fmt.Printf("FN: Update  \n NewVelocity: %v \n Position: %v\n TimeStep %v\n MulOne %v\n AddSum %v\n\n",
-	//		a.NewVelocity, a.Position, Sim.TimeStep, MulOne(a.NewVelocity, Sim.TimeStep), AddSum(a.Position, MulOne(a.Velocity, Sim.TimeStep)))
 	a.Velocity = a.NewVelocity
 	a.Position = Add(a.Position, MulOne(a.Velocity, Sim.TimeStep))
 }
 
-// FINISH
+// LinearProgram1
+// prefVelocityを適用できないため新しく計算する
+// orcaLinesのあるLine(衝突しているLine？)に対して処理をおこなう
+// 速度を変更してそれまでのラインに影響がないかを確認
 func (a *Agent) LinearProgram1(lines []*Line, lineNo int, radius float64, optVelocity *Vector2, directionOpt bool) bool {
 	var dotProduct, discriminant float64
+	// pointとdirectionの内積
 	dotProduct = Mul(lines[lineNo].Point, lines[lineNo].Direction)
+	// 内積の二乗＋maxSpeedの二乗-pointの二乗(判別式)
 	discriminant = math.Pow(dotProduct, 2) + math.Pow(radius, 2) - Sqr(lines[lineNo].Point)
 
 	if discriminant < 0 {
@@ -552,13 +529,13 @@ func (a *Agent) LinearProgram1(lines []*Line, lineNo int, radius float64, optVel
 
 	for i := 0; i < lineNo; i++ {
 		var denominator, numerator float64
+		// Det: スカラー値
 		denominator = Det(lines[lineNo].Direction, lines[i].Direction)
 		numerator = Det(lines[i].Direction, Sub(lines[lineNo].Point, lines[i].Point))
 
 		if math.Abs(denominator) <= RVO_EPSILON {
 			/* Lines lineNo and i are (almost) parallel. */
 			if numerator < 0 {
-				//				fmt.Printf("FN: LinearProgram1  false1 \n")
 				return false
 			} else {
 				continue
@@ -567,17 +544,17 @@ func (a *Agent) LinearProgram1(lines []*Line, lineNo int, radius float64, optVel
 
 		var t float64
 		t = numerator / denominator
-
 		if denominator >= 0 {
+			// 行iはlineNoより右側にある
 			/* Line i bounds line lineNo on the right. */
 			tRight = math.Min(tRight, t)
 		} else {
+			// 行iはlineNoより左側にある
 			/* Line i bounds line lineNo on the left. */
 			tLeft = math.Max(tLeft, t)
 		}
 
 		if tLeft > tRight {
-			//			fmt.Printf("FN: LinearProgram1  false2 \n")
 			return false
 		}
 	}
@@ -585,84 +562,79 @@ func (a *Agent) LinearProgram1(lines []*Line, lineNo int, radius float64, optVel
 	if directionOpt {
 		/* Optimize direction. */
 		if Mul(optVelocity, lines[lineNo].Direction) > 0 {
+			//orcaLineに沿った方向の速度を設定する
 			/* Take right extreme. */
 			a.NewVelocity = Add(lines[lineNo].Point, MulOne(lines[lineNo].Direction, tRight))
 
-			//			fmt.Printf("FN: LinearProgram1  \n a.NewVelocity1: %v \n\n",
-			//				a.NewVelocity)
 		} else {
+			// orcaLineに沿った方向の速度を設定する
 			/* Take left extreme. */
 			a.NewVelocity = Add(lines[lineNo].Point, MulOne(lines[lineNo].Direction, tLeft))
 
-			//			fmt.Printf("FN: LinearProgram1  \n a.NewVelocity2: %v \n\n",
-			//				a.NewVelocity)
 		}
 	} else {
 		/* Optimize closest point. */
+		// t, tLeft, tRightは定数。orcaLineに沿った方向の速度を設定する
 		t := Mul(lines[lineNo].Direction, Sub(optVelocity, lines[lineNo].Point))
 
 		if t < tLeft {
 			a.NewVelocity = Add(lines[lineNo].Point, MulOne(lines[lineNo].Direction, tLeft))
 
-			//			fmt.Printf("FN: LinearProgram1  \n a.NewVelocity3: %v \n\n",
-			//				a.NewVelocity)
 		} else if t > tRight {
 			a.NewVelocity = Add(lines[lineNo].Point, MulOne(lines[lineNo].Direction, tRight))
 
-			//			fmt.Printf("FN: LinearProgram1  \n a.NewVelocity4: %v \n\n",
-			//				a.NewVelocity)
 		} else {
 			a.NewVelocity = Add(lines[lineNo].Point, MulOne(lines[lineNo].Direction, t))
 
-			//			fmt.Printf("FN: LinearProgram1  \n a.NewVelocity5: %v \n a.NewVelocity: %v\n\n",
-			//				a.NewVelocity, a.NewVelocity)
 		}
 	}
 
 	return true
 }
 
-// FINISH
+// LinearProgram2
+// 速度変更
+// linearprogramで正しい速度を算出できてないからObstacle3にいく？
 func (a *Agent) LinearProgram2(lines []*Line, radius float64, optVelocity *Vector2, directionOpt bool) int {
-	//	fmt.Printf("FN: LinearProgram2\n")
+	// 速度(a.NewVelocity)の前処理
 	if directionOpt {
+		// LP3から呼ばれた時のみ
+		// 最適な方向と速度が決まっている場合：prefVelocityとmaxSpeedをかける
 		/*
 		 * Optimize direction. Note that the optimization velocity is of unit
 		 * length in this case.
 		 */
 		a.NewVelocity = MulOne(optVelocity, radius)
 
-		//		fmt.Printf("FN: LinearProgram2  \n a.NewVelocity1: %v \n\n",
-		//			a.NewVelocity)
 	} else if Sqr(optVelocity) > math.Pow(radius, 2) {
+		// prefVelocityの距離が半径より大きいとき
+		// 半径を越すとき、normarizeする
 		/* Optimize closest point and outside circle. */
 		a.NewVelocity = MulOne(Normalize(optVelocity), radius)
 
-		//		fmt.Printf("FN: LinearProgram2  \n a.NewVelocity2: %v \n\n",
-		//			a.NewVelocity)
 	} else {
+		// prefVelocityの距離が半径以下のとき
 		/* Optimize closest point and inside circle. */
 		a.NewVelocity = optVelocity
 
-		//		fmt.Printf("FN: LinearProgram2  \n a.NewVelocity3: %v \n\n",
-		//			a.NewVelocity)
 	}
 
+	// 全てのラインでtrueが帰れば終了
 	for i := 0; i < len(lines); i++ {
-		//		fmt.Printf("FN: LinearProgram2 i %v \n\n",
-		//			i)
+		// 射影ベクトルのおおきさ？
+		// 二週目は更新されたa.NewVelocityで再度ループ
+		// NewVelocityで進むとあるラインとぶつかってしまう時
 		if Det(lines[i].Direction, Sub(lines[i].Point, a.NewVelocity)) > 0 {
-			/* Result does not satisfy constraint i. Compute new optimal a.NewVelocity. */
+			// a.NewVelocityとlines[i]が安全ではないとき
+			/* a.NewVelocity does not satisfy constraint i. Compute new optimal a.NewVelocity. */
 			var tempResult *Vector2
 			tempResult = a.NewVelocity
 
-			//Cause
-			//			fmt.Printf("FN: LinearProgram2  \n toLP1\n len(lines): %v \n radius: %v\n optVelocity: %v \n directonOpt: %v \n a.NewVelocity: %v \n\n", len(lines), radius, optVelocity, directionOpt, a.NewVelocity)
+			// 速度を変更してそれまでのラインに影響がないかを確認
 			if a.LinearProgram1(lines, i, radius, optVelocity, directionOpt) == false {
+				// NewVelocityを元に戻す
 				a.NewVelocity = tempResult
-
-				//				fmt.Printf("FN: LinearProgram2  \n a.NewVelocity4: %v \n\n",
-				//					a.NewVelocity)
+				// linearProgram3へ
 				return i
 			}
 		}
@@ -670,19 +642,20 @@ func (a *Agent) LinearProgram2(lines []*Line, radius float64, optVelocity *Vecto
 	return len(lines)
 }
 
-// ! ?? projLine make size
-//FINISH
+// LinearProgram3
+// direction optimize
+// 角度変更
 func (a *Agent) LinearProgram3(lines []*Line, numObstLines int, beginLine int, radius float64) {
-	//	fmt.Printf("FN: LinearProgram3  \n lineSize: %v\n beginLine: %v \n\n", len(lines), beginLine)
 	var distance float64
 	distance = 0.0
 	for i := beginLine; i < len(lines); i++ {
-		//		fmt.Printf("FN: LinearProgram3  \n lineDirection: %v\n linePoint: %v\n a.NewVelocity: %v \n\n", lines[i].Direction, lines[i].Point, a.NewVelocity)
 		if Det(lines[i].Direction, Sub(lines[i].Point, a.NewVelocity)) > distance {
 			/* Result does not satisfy constraint of line i. */
-			// ? std::vector<Line> projLines(lines.begin(), lines.begin() + static_cast<ptrdiff_t>(numObstLines));
 			var projLines []*Line
-			projLines = make([]*Line, 0) // ?
+			projLines = make([]*Line, 0)
+			for i := 0; i < numObstLines; i++{
+				projLines = append(projLines, lines[i])
+			}
 
 			for j := numObstLines; j < i; j++ {
 				var line Line
@@ -699,7 +672,6 @@ func (a *Agent) LinearProgram3(lines []*Line, numObstLines int, beginLine int, r
 						line.Point = MulOne(Add(lines[i].Point, lines[j].Point), 0.5)
 					}
 				} else {
-					// line.Point = lines[i].Point + (det(lines[j].Direction, lines[i].Point - lines[j].Point) / determinant) * lines[i].Direction;
 					line.Point = Add(lines[i].Point, MulOne(lines[i].Direction, (Det(lines[j].Direction, Sub(lines[i].Point, lines[j].Point))/determinant)))
 				}
 
@@ -712,6 +684,7 @@ func (a *Agent) LinearProgram3(lines []*Line, numObstLines int, beginLine int, r
 			tempResult = a.NewVelocity
 
 			if a.LinearProgram2(projLines, radius, NewVector2(-lines[i].Direction.Y, lines[i].Direction.X), true) < len(projLines) {
+				// ここは原則起こらないはず
 				/* This should in principle not happen.  The a.NewVelocity is by definition
 				 * already in the feasible region of this linear program. If it fails,
 				 * it is due to small floating point error, and the current a.NewVelocity is
@@ -720,8 +693,6 @@ func (a *Agent) LinearProgram3(lines []*Line, numObstLines int, beginLine int, r
 
 				a.NewVelocity = tempResult
 
-				//				fmt.Printf("FN: LinearProgram3  \n a.NewVelocity1: %v \n\n",
-				//					a.NewVelocity)
 			}
 
 			distance = Det(lines[i].Direction, Sub(lines[i].Point, a.NewVelocity))
